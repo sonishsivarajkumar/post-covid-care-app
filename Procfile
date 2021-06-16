@@ -1,2 +1,2 @@
-#web: gunicorn app:src/app
-echo "Printing dummy"
+web: gunicorn src/app:app
+ 

@@ -452,4 +452,5 @@ api.add_resource(LoginUser, '/login')
 db.create_all()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3015)
+    #app.run(host='0.0.0.0', port=3015)
+    app.run(threaded=True, port=5000)

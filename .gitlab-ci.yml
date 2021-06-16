@@ -1,0 +1,54 @@
+stages:
+  - install_dependencies
+  - build
+  - deployment
+
+
+Install_Dependencies:
+  tags:
+   - vmcicd2
+  stage: install_dependencies
+  only:
+     - cicd_deploy
+     - dev
+  cache:
+    key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+    paths:
+      - node_modules/
+  script:
+    - echo "npm install"
+
+
+
+Build-Deploy-registry-dev:
+   tags:
+   - vmcicd2
+   stage: build
+   only:
+     - cicd_deploy
+     - dev
+   script:
+     - echo "build"
+     - docker login -u deployment -p $CI_BUILD_TOKEN registry-dev.rxcorp.com; docker build -t postcovidcare_api .
+     - docker tag postcovidcare_api:latest registry-dev.rxcorp.com/sonish.s/postcovidcare_api:development
+     - docker push registry-dev.rxcorp.com/sonish.s/postcovidcare_api:development
+
+
+1deploy_dev:
+   tags:
+   - vmcicd2
+   stage: deployment
+   variables:
+     RANDOM_PORT: $(cat tmp/random_port)
+   only:
+     - cicd_deploy
+     - dev
+   script:
+      - ssh ubuntu@10.91.238.62 "docker login -u deployment -p $CI_BUILD_TOKEN registry-dev.rxcorp.com"
+      - ssh ubuntu@10.91.238.62 "docker pull registry-dev.rxcorp.com/sonish.s/postcovidcare_api:development"
+      - ssh ubuntu@10.91.238.62 "docker stop postcovidcare_api || true && docker rm postcovidcare_api || true"
+      - ssh ubuntu@10.91.238.62 "docker run -d -p 3015:3015 --network=host --name postcovidcare_api registry-dev.rxcorp.com/sonish.s/postcovidcare_api:development"
+   environment:
+     name: development
+     url: http://cpa-ui-dev.inst.aiml-cpa-dev.us-east-4.bdf-cloud.iqvia.net:3015
+

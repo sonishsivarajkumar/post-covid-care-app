@@ -1,0 +1,80 @@
+.*
+*__pycache__*
+/data/
+/output_data/
+
+# Byte-compiled / optimized / DLL files
+__pycache__
+.pytest_cache
+*.py[cod]
+*__pycache__*
+*.cpython-36.pyc*
+
+# C extensions
+*.so
+metastore_db
+!.gitignore
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.eggs
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+htmlcov/
+
+# Translations
+*.mo
+
+# Mr Developer
+.mr.developer.cfg
+.project
+.pydevproject
+
+# Rope
+.ropeproject
+
+# Django stuff:
+*.log
+*.pot
+
+# Sphinx documentation
+docs/_build/
+
+# Others
+.idea/modules.xml
+.idea/aiml_sclrx.iml
+checkpoints/
+tests/checkpoints/
+
+# csv
+
+# txt
+
+# hmtl and xml
+*.html
+*.xml
+.idea
+
+# spark warehouse
+spark-warehouse

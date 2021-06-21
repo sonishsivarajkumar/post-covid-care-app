@@ -279,7 +279,7 @@ class LoginUser(Resource):
 api.add_resource(RegisterUser, '/register')
 api.add_resource(LoginUser, '/login')
 
-db.create_all()
+#db.create_all()
 
 if __name__ == '__main__':
     #app.run(host='0.0.0.0', port=3015)

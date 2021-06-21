@@ -78,13 +78,20 @@ recommend_schema = RecommendationSchema()
 recommends_schema = RecommendationSchema(many=True)
 
 
-class RecommendationResource(Resource):
+class RecommendationListResource(Resource):
     def get(self):
         records = Recommendation.query.all()
         return recommends_schema.dump(records)
 
 
-api.add_resource(RecommendationResource, '/recommend')
+class RecommendationResource(Resource):
+    def get(self, patient_id):
+        record = Recommendation.query.get_or_404(patient_id)
+        return recommend_schema.dump(record)
+
+
+api.add_resource(RecommendationListResource, '/recommends')
+api.add_resource(RecommendationResource, '/recommend/<int:patient_id>')
 
 
 def calc_pcfs_score(**d):
@@ -306,5 +313,4 @@ api.add_resource(LoginUser, '/login')
 db.create_all()
 
 if __name__ == '__main__':
-    #app.run(host='0.0.0.0', port=3015)
     app.run(threaded=True, port=5000)

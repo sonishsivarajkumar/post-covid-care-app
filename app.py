@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_restful import Api, Resource
 from flask_marshmallow import Marshmallow
 from marshmallow import Schema, fields
+from sqlalchemy import insert
 import json
 
 app = Flask(__name__)
@@ -21,9 +22,9 @@ class PatientDetails(db.Model):
     weight_kg = db.Column(db.Float)
     date_of_onset_of_symptoms = db.Column(db.String(50))
     date_of_diagnosis = db.Column(db.String(50))
-    initial_symptoms = db.Column(db.String(50))
+    initial_symptoms = db.Column(db.JSON)
     date_of_pcr_negative = db.Column(db.String(50))
-    comorbidities = db.Column(db.String(50))
+    comorbidities = db.Column(db.JSON)
     vaccination_status = db.Column(db.String(50))
     hospitalization_status = db.Column(db.Boolean)
     icu = db.Column(db.Boolean)
@@ -31,7 +32,7 @@ class PatientDetails(db.Model):
     vitals_pulse = db.Column(db.Integer)
     vitals_oxygen_level = db.Column(db.Float)
     vitals_temperature = db.Column(db.Float)
-    current_symptoms = db.Column(db.String(50))
+    current_symptoms = db.Column(db.JSON)
     question_1 = db.Column(db.Boolean)
     question_2 = db.Column(db.Boolean)
     question_3 = db.Column(db.Boolean)
@@ -54,6 +55,36 @@ class PatientDetailsSchema(ma.Schema):
 
 patient_schema = PatientDetailsSchema()
 patients_schema = PatientDetailsSchema(many=True)
+
+
+class Recommendation(db.Model):
+    patient_id = db.Column(db.Integer, primary_key=True)
+    hcp_required = db.Column(db.Boolean)
+    hcp_required_reasons = db.Column(db.JSON)
+    location = db.Column(db.JSON)
+    specialties_to_consult = db.Column(db.JSON)
+
+    def __repr__(self):
+        return '<Recommendation %s>' % self.hcp_required
+
+
+class RecommendationSchema(ma.Schema):
+    class Meta:
+        fields = ('patient_id', 'hcp_required', 'hcp_required_reasons', 'location', 'specialties_to_consult')
+        model = Recommendation
+
+
+recommend_schema = RecommendationSchema()
+recommends_schema = RecommendationSchema(many=True)
+
+
+class RecommendationResource(Resource):
+    def get(self):
+        records = Recommendation.query.all()
+        return recommends_schema.dump(records)
+
+
+api.add_resource(RecommendationResource, '/recommend')
 
 
 def calc_pcfs_score(**d):
@@ -99,37 +130,37 @@ def patient_classifier(**r):
                        'Blackening/discoloration of fingertips/toes']
     flagged_comorbidities = ['Diabetes Mellitus', 'Hypertension', 'High BP', 'Heart disease', 'Asthma', 'COPD',
                              'Chronic Kidney disease', 'Rheumatoid arthritis']
-
-    current_symptoms = r['current_symptoms'].split(',')
-    comorbidities = r['comorbidities'].split(',')
+    current_symptoms = r['current_symptoms']
+    # comorbidities = r['comorbidities'].split(',')
+    comorbidities = r['comorbidities']
     set1 = set(danger_symptoms)
     set2 = set(flagged_comorbidities)
-
     list1 = [value for value in current_symptoms if value in set1]
     list2 = [value for value in comorbidities if value in set2]
-
     if (bp1 > 140 and bp2 > 90) or pulse > 100 or temp > 38 or o2 < 92:
         res = True
         warning.append('Vital signs are below normal levels!')
-
     if len(list1) >= 1:
         res = True
         warning.append('Serious symptoms present')
-
     if len(list2) >= 1:
         res = True
         warning.append('Serious comorbidities present')
-
     if pcfs >= 1:
         res = True
         warning.append('Functional limitations detected')
-
     if not res:
         specialties.clear()
         location = ''
 
+    # saving response to recommendation table
+    db.session.execute(insert(Recommendation).values(patient_id=r['patient_id'], hcp_required=res,
+                                                     hcp_required_reasons=warning, location=location,
+                                                     specialties_to_consult=specialties))
+    db.session.commit()
     result = {'hcp_required': res, 'hcp_required_reasons': warning,
               'location': location, 'specialties_to_consult': specialties}
+
     return result
 
 
@@ -162,14 +193,13 @@ class PatientDetailsListResource(Resource):
             question_2=request.json['question_2'],
             question_3=request.json['question_3'],
             question_4=request.json['question_4'])
-
         db.session.add(new_post)
         db.session.commit()
         p = int(request.json['patient_id'])
         record = PatientDetails.query.filter_by(patient_id=p).first()
         dic = patient_schema.dump(record)
-
         response = patient_classifier(**dic)
+
         return response
 
 
@@ -255,19 +285,14 @@ class LoginUser(Resource):
             p = PatientDetails.query.filter_by(patient_id=data.patient_id).first()
             if p is not None:
                 patient_details = patient_schema.dump(p)
-                recommendation = patient_classifier(**patient_details)
-                patient_details['comorbidities'] = patient_details['comorbidities'].split(',')
-                patient_details['current_symptoms'] = patient_details['current_symptoms'].split(',')
-                patient_details['initial_symptoms'] = patient_details['initial_symptoms'].split(',')
-
+                recommendation = recommend_schema.dump(Recommendation.query.filter_by(patient_id=data.patient_id).first())
+                # patient_details['comorbidities'] = patient_details['comorbidities'].split(',')
             else:
                 patient_details = ''
                 recommendation = ''
-
             response = {'basic_info': basic_info, 'patient_details': patient_details,
                         'recommendation': recommendation}
             return response, 201
-
 
         else:
             abort(
@@ -278,8 +303,7 @@ class LoginUser(Resource):
 
 api.add_resource(RegisterUser, '/register')
 api.add_resource(LoginUser, '/login')
-
-#db.create_all()
+# db.create_all()
 
 if __name__ == '__main__':
     #app.run(host='0.0.0.0', port=3015)

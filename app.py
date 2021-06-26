@@ -16,10 +16,10 @@ api = Api(app)  # new
 # PatientDetails api
 class PatientDetails(db.Model):
     patient_id = db.Column(db.Integer, primary_key=True)
-    age = db.Column(db.Integer)
+    age = db.Column(db.String(50))
     gender = db.Column(db.String(50))
-    height_cm = db.Column(db.Float)
-    weight_kg = db.Column(db.Float)
+    height_cm = db.Column(db.String(50))
+    weight_kg = db.Column(db.String(50))
     date_of_onset_of_symptoms = db.Column(db.String(50))
     date_of_diagnosis = db.Column(db.String(50))
     initial_symptoms = db.Column(db.JSON)
@@ -29,9 +29,9 @@ class PatientDetails(db.Model):
     hospitalization_status = db.Column(db.Boolean)
     icu = db.Column(db.Boolean)
     vitals_bp = db.Column(db.String(50))
-    vitals_pulse = db.Column(db.Integer)
-    vitals_oxygen_level = db.Column(db.Float)
-    vitals_temperature = db.Column(db.Float)
+    vitals_pulse = db.Column(db.String(50))
+    vitals_oxygen_level = db.Column(db.String(50))
+    vitals_temperature = db.Column(db.String(50))
     current_symptoms = db.Column(db.JSON)
     question_1 = db.Column(db.Boolean)
     question_2 = db.Column(db.Boolean)
@@ -352,4 +352,4 @@ api.add_resource(LoginUser, '/login')
 db.create_all()
 
 if __name__ == '__main__':
-    app.run(threaded=True, port=5000)
+    app.run(host='0.0.0.0', port=3015)

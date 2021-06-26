@@ -222,24 +222,10 @@ class PatientDetailsResource(Resource):
         record = PatientDetails.query.get_or_404(patient_id)
         return patient_schema.dump(record)
 
-    def delete(self, patient_id):
-        record = PatientDetails.query.get_or_404(patient_id)
-        db.session.delete(record)
-        db.session.commit()
-        return '', 204
-
-
-class UpdateDetailsResource(Resource):
     def put(self, patient_id):
         r1 = PatientDetails.query.get_or_404(patient_id)
-        r2 = User.query.get_or_404(patient_id)
 
         r1.patient_id = request.json['patient_id']
-        r2.patient_id = request.json['patient_id']
-        r2.first_name = request.json['first_name']
-        r2.last_name = request.json['last_name']
-        r2.email = request.json['email']
-        r2.password = request.json['password']
         r1.age = request.json['age']
         r1.gender = request.json['gender']
         r1.height_cm = request.json['height_cm']
@@ -267,10 +253,15 @@ class UpdateDetailsResource(Resource):
         response = patient_classifier(**dic)
         return response
 
+    def delete(self, patient_id):
+        record = PatientDetails.query.get_or_404(patient_id)
+        db.session.delete(record)
+        db.session.commit()
+        return '', 204
+
 
 api.add_resource(PatientDetailsResource, '/patient_details/<int:patient_id>')
 api.add_resource(PatientDetailsListResource, '/patients_details')
-api.add_resource(UpdateDetailsResource, '/update/<int:patient_id>')
 
 
 class User(db.Model):
@@ -361,4 +352,4 @@ api.add_resource(LoginUser, '/login')
 db.create_all()
 
 if __name__ == '__main__':
-    app.run(threaded=True, port=5000)
+    app.run(host='0.0.0.0', port=3015)

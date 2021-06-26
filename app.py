@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_restful import Api, Resource
 from flask_marshmallow import Marshmallow
 from marshmallow import Schema, fields
-from sqlalchemy import insert
+from sqlalchemy import insert, update
 import json
 
 app = Flask(__name__)
@@ -161,13 +161,20 @@ def patient_classifier(**r):
         location = ''
 
     # saving response to recommendation table
-    db.session.execute(insert(Recommendation).values(patient_id=r['patient_id'], hcp_required=res,
-                                                     hcp_required_reasons=warning, location=location,
-                                                     specialties_to_consult=specialties))
+    data = Recommendation.query.filter_by(patient_id=r['patient_id']).first()
+    if data is None:
+        db.session.execute(insert(Recommendation).values(patient_id=r['patient_id'], hcp_required=res,
+                                                         hcp_required_reasons=warning, location=location,
+                                                         specialties_to_consult=specialties))
+
+    else:
+        db.session.execute(update(Recommendation).values(hcp_required=res,
+                                                         hcp_required_reasons=warning, location=location,
+                                                         specialties_to_consult=specialties))
     db.session.commit()
+
     result = {'hcp_required': res, 'hcp_required_reasons': warning,
               'location': location, 'specialties_to_consult': specialties}
-
     return result
 
 
@@ -222,8 +229,48 @@ class PatientDetailsResource(Resource):
         return '', 204
 
 
+class UpdateDetailsResource(Resource):
+    def put(self, patient_id):
+        r1 = PatientDetails.query.get_or_404(patient_id)
+        r2 = User.query.get_or_404(patient_id)
+
+        r1.patient_id = request.json['patient_id']
+        r2.patient_id = request.json['patient_id']
+        r2.first_name = request.json['first_name']
+        r2.last_name = request.json['last_name']
+        r2.email = request.json['email']
+        r2.password = request.json['password']
+        r1.age = request.json['age']
+        r1.gender = request.json['gender']
+        r1.height_cm = request.json['height_cm']
+        r1.weight_kg = request.json['weight_kg']
+        r1.date_of_onset_of_symptoms = request.json['date_of_onset_of_symptoms']
+        r1.date_of_diagnosis = request.json['date_of_diagnosis']
+        r1.initial_symptoms = request.json['initial_symptoms']
+        r1.date_of_pcr_negative = request.json['date_of_pcr_negative']
+        r1.comorbidities = request.json['comorbidities']
+        r1.vaccination_status = request.json['vaccination_status']
+        r1.hospitalization_status = request.json['hospitalization_status']
+        r1.icu = request.json['icu']
+        r1.vitals_bp = request.json['vitals_bp']
+        r1.vitals_pulse = request.json['vitals_pulse']
+        r1.vitals_oxygen_level = request.json['vitals_oxygen_level']
+        r1.vitals_temperature = request.json['vitals_temperature']
+        r1.current_symptoms = request.json['current_symptoms']
+        r1.question_1 = request.json['question_1']
+        r1.question_2 = request.json['question_2']
+        r1.question_3 = request.json['question_3']
+        r1.question_4 = request.json['question_4']
+
+        db.session.commit()
+        dic = patient_schema.dump(r1)
+        response = patient_classifier(**dic)
+        return response
+
+
 api.add_resource(PatientDetailsResource, '/patient_details/<int:patient_id>')
 api.add_resource(PatientDetailsListResource, '/patients_details')
+api.add_resource(UpdateDetailsResource, '/update/<int:patient_id>')
 
 
 class User(db.Model):
@@ -292,7 +339,8 @@ class LoginUser(Resource):
             p = PatientDetails.query.filter_by(patient_id=data.patient_id).first()
             if p is not None:
                 patient_details = patient_schema.dump(p)
-                recommendation = recommend_schema.dump(Recommendation.query.filter_by(patient_id=data.patient_id).first())
+                recommendation = recommend_schema.dump(
+                    Recommendation.query.filter_by(patient_id=data.patient_id).first())
                 # patient_details['comorbidities'] = patient_details['comorbidities'].split(',')
             else:
                 patient_details = ''
@@ -313,4 +361,4 @@ api.add_resource(LoginUser, '/login')
 db.create_all()
 
 if __name__ == '__main__':
-    app.run(threaded=True, port=5000)
+    app.run(host='0.0.0.0', port=3015)

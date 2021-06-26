@@ -1,7 +1,10 @@
-from flask import Flask, request
+from flask import Flask, request, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_restful import Api, Resource
 from flask_marshmallow import Marshmallow
+from marshmallow import Schema, fields
+from sqlalchemy import insert
+import json
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
@@ -10,109 +13,304 @@ ma = Marshmallow(app)
 api = Api(app)  # new
 
 
-class Post(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(50))
-    content = db.Column(db.String(255))
+# PatientDetails api
+class PatientDetails(db.Model):
+    patient_id = db.Column(db.Integer, primary_key=True)
+    age = db.Column(db.Integer)
+    gender = db.Column(db.String(50))
+    height_cm = db.Column(db.Float)
+    weight_kg = db.Column(db.Float)
+    date_of_onset_of_symptoms = db.Column(db.String(50))
+    date_of_diagnosis = db.Column(db.String(50))
+    initial_symptoms = db.Column(db.JSON)
+    date_of_pcr_negative = db.Column(db.String(50))
+    comorbidities = db.Column(db.JSON)
+    vaccination_status = db.Column(db.String(50))
+    hospitalization_status = db.Column(db.Boolean)
+    icu = db.Column(db.Boolean)
+    vitals_bp = db.Column(db.String(50))
+    vitals_pulse = db.Column(db.Integer)
+    vitals_oxygen_level = db.Column(db.Float)
+    vitals_temperature = db.Column(db.Float)
+    current_symptoms = db.Column(db.JSON)
+    question_1 = db.Column(db.Boolean)
+    question_2 = db.Column(db.Boolean)
+    question_3 = db.Column(db.Boolean)
+    question_4 = db.Column(db.Boolean)
 
     def __repr__(self):
-        return '<Post %s>' % self.title
+        return '<Patient %s>' % self.gender
 
 
-# class Post(db.Model):
-        # id = db.Column(db.Integer, primary_key=True)
-        # patient_id = db.Column(db.Integer, primary_key=True)
-
-        # date_of_onset_of_symptoms = db.Column(db.String(50))
-        # first_symptoms = db.Column(db.String(50))
-        # date_of_pcr_negative = db.Column(db.String(50))
-        # comorbidities = db.Column(db.String(50))
-        # vaccination_status = db.Column(db.String(50))
-        # hospitalization = db.Column(db.String(50))
-        # icu = db.Column(db.String(50))
-
-        # def __repr__(self):
-        #     return '<Post %s>' % self.first_symptoms
-
-
-db.create_all()
-
-# class PostSchema(ma.Schema):
-#     class Meta:
-#         fields = ("patient_id", "date_of_onset_of_symptoms", "first_symptoms", "date_of_pcr_negative", "comorbidities", "vaccination_status", "hospitalization", "icu")
-#         model = Post
-
-class PostSchema(ma.Schema):
+class PatientDetailsSchema(ma.Schema):
     class Meta:
-        fields = ("id", "title", "content")
-        model = Post
+        fields = (
+            'patient_id', 'age', 'gender', 'height_cm', 'weight_kg',
+            'date_of_onset_of_symptoms', 'date_of_diagnosis', 'initial_symptoms', 'date_of_pcr_negative',
+            'comorbidities', 'vaccination_status', 'hospitalization_status', 'icu', "vitals_bp",
+            "vitals_pulse", "vitals_oxygen_level", "vitals_temperature", "current_symptoms",
+            "question_1", "question_2", "question_3", "question_4")
+        model = PatientDetails
 
 
-post_schema = PostSchema()
-posts_schema = PostSchema(many=True)
+patient_schema = PatientDetailsSchema()
+patients_schema = PatientDetailsSchema(many=True)
 
 
-# class PostListResource(Resource):
-#     def get(self):
-#         posts = Post.query.all()
-#         return posts_schema.dump(posts)
-#
-#     def post(self):
-#         new_post = Post(
-#             patient_id=request.json['patient_id'],
-#             date_of_onset_of_symptoms=request.json['date_of_onset_of_symptoms'],
-#             first_symptoms=request.json['first_symptoms'],
-#             date_of_pcr_negative=request.json['date_of_pcr_negative'],
-#             comorbidities=request.json['comorbidities'],
-#             vaccination_status=request.json['vaccination_status'],
-#             hospitalization=request.json['hospitalization'],
-#             icu=request.json['icu'])
-#
-#         db.session.add(new_post)
-#         db.session.commit()
-#         return post_schema.dump(new_post)
+class Recommendation(db.Model):
+    patient_id = db.Column(db.Integer, primary_key=True)
+    hcp_required = db.Column(db.Boolean)
+    hcp_required_reasons = db.Column(db.JSON)
+    location = db.Column(db.JSON)
+    specialties_to_consult = db.Column(db.JSON)
+
+    def __repr__(self):
+        return '<Recommendation %s>' % self.hcp_required
 
 
-class PostListResource(Resource):
+class RecommendationSchema(ma.Schema):
+    class Meta:
+        fields = ('patient_id', 'hcp_required', 'hcp_required_reasons', 'location', 'specialties_to_consult')
+        model = Recommendation
+
+
+recommend_schema = RecommendationSchema()
+recommends_schema = RecommendationSchema(many=True)
+
+
+class RecommendationListResource(Resource):
     def get(self):
-        posts = Post.query.all()
-        return posts_schema.dump(posts)
+        records = Recommendation.query.all()
+        return recommends_schema.dump(records)
+
+
+class RecommendationResource(Resource):
+    def get(self, patient_id):
+        record = Recommendation.query.get_or_404(patient_id)
+        return recommend_schema.dump(record)
+
+
+api.add_resource(RecommendationListResource, '/recommends')
+api.add_resource(RecommendationResource, '/recommend/<int:patient_id>')
+
+
+def calc_pcfs_score(**d):
+    if not d['question_1']:
+        score = 4
+    elif d['question_2']:
+        score = 3
+    elif not d['question_3']:
+        score = 0
+    elif not d['question_4']:
+        score = 1
+    else:
+        score = 2
+    return score
+
+
+def patient_classifier(**r):
+    pcfs = calc_pcfs_score(**r)
+    res = False
+    warning = []
+    specialties = ['Internal medicine', 'Family medicine', 'General practice', 'Emergency Medicine']
+    location = 'United States'
+    bp_sys, bp_dias = r['vitals_bp'].split('/')
+    bp1 = int(bp_sys)
+    bp2 = int(bp_dias)
+    pulse = int(r['vitals_pulse'])
+    temp = int(r['vitals_temperature'])
+    o2 = int(r['vitals_oxygen_level'])
+    danger_symptoms = ['Longstanding fatigue', 'Shortness of breath', 'Recurrent/longstanding Cough',
+                       'Joint pain',
+                       'Chest Pain', 'Headache', 'Skin rashes', 'Hair loss',
+                       'Depression, anxiety, or mood changes',
+                       'Memory and concentration problems', 'PTSD (Post traumatic stress disorder)',
+                       'Racing heart beat/Palpitations/Heart rate and Rhythm Disorders',
+                       'Inability to sleep properly/Insomnia', 'New onset Diabetes mellitus',
+                       'High sugar levels/Impaired glycemic control', 'Heart attack/Acute coronary syndromes',
+                       'Blood clots/Hypercoagulation disorders',
+                       'Tingling sensation in hands/ feet/ Neuropathy',
+                       'Numbness of body parts', 'Brain fog (Difficulty thinking straight)',
+                       'Lungs fibrosis/Lung complications', 'Worsening of pre-existing kidney disorder',
+                       'Recurring/longstanding fever', 'Recurrent/longstanding loose motions',
+                       'Severe stomach pain',
+                       'Blackening/discoloration of fingertips/toes']
+    flagged_comorbidities = ['Diabetes Mellitus', 'Hypertension', 'High BP', 'Heart disease', 'Asthma', 'COPD',
+                             'Chronic Kidney disease', 'Rheumatoid arthritis']
+    current_symptoms = r['current_symptoms']
+    # comorbidities = r['comorbidities'].split(',')
+    comorbidities = r['comorbidities']
+    set1 = set(danger_symptoms)
+    set2 = set(flagged_comorbidities)
+    list1 = [value for value in current_symptoms if value in set1]
+    list2 = [value for value in comorbidities if value in set2]
+    if (bp1 > 140 and bp2 > 90) or pulse > 100 or temp > 38 or o2 < 92:
+        res = True
+        warning.append('Vital signs are below normal levels!')
+    if len(list1) >= 1:
+        res = True
+        warning.append('Serious symptoms present')
+    if len(list2) >= 1:
+        res = True
+        warning.append('Serious comorbidities present')
+    if pcfs >= 1:
+        res = True
+        warning.append('Functional limitations detected')
+    if not res:
+        specialties.clear()
+        location = ''
+
+    # saving response to recommendation table
+    db.session.execute(insert(Recommendation).values(patient_id=r['patient_id'], hcp_required=res,
+                                                     hcp_required_reasons=warning, location=location,
+                                                     specialties_to_consult=specialties))
+    db.session.commit()
+    result = {'hcp_required': res, 'hcp_required_reasons': warning,
+              'location': location, 'specialties_to_consult': specialties}
+
+    return result
+
+
+class PatientDetailsListResource(Resource):
+    def get(self):
+        records = PatientDetails.query.all()
+        return patients_schema.dump(records)
 
     def post(self):
-        new_post = Post(
-            title=request.json['title'],
-            content=request.json['content']
-        )
+        new_post = PatientDetails(
+            patient_id=request.json['patient_id'],
+            age=request.json['age'],
+            gender=request.json['gender'],
+            height_cm=request.json['height_cm'],
+            weight_kg=request.json['weight_kg'],
+            date_of_onset_of_symptoms=request.json['date_of_onset_of_symptoms'],
+            date_of_diagnosis=request.json['date_of_diagnosis'],
+            initial_symptoms=request.json['initial_symptoms'],
+            date_of_pcr_negative=request.json['date_of_pcr_negative'],
+            comorbidities=request.json['comorbidities'],
+            vaccination_status=request.json['vaccination_status'],
+            hospitalization_status=request.json['hospitalization_status'],
+            icu=request.json['icu'],
+            vitals_bp=request.json['vitals_bp'],
+            vitals_pulse=request.json['vitals_pulse'],
+            vitals_oxygen_level=request.json['vitals_oxygen_level'],
+            vitals_temperature=request.json['vitals_temperature'],
+            current_symptoms=request.json['current_symptoms'],
+            question_1=request.json['question_1'],
+            question_2=request.json['question_2'],
+            question_3=request.json['question_3'],
+            question_4=request.json['question_4'])
         db.session.add(new_post)
         db.session.commit()
-        return post_schema.dump(new_post)
+        p = int(request.json['patient_id'])
+        record = PatientDetails.query.filter_by(patient_id=p).first()
+        dic = patient_schema.dump(record)
+        response = patient_classifier(**dic)
 
-class PostResource(Resource):
-    def get(self, post_id):
-        post = Post.query.get_or_404(post_id)
-        return post_schema.dump(post)
+        return response
 
-    # def patch(self, post_id):
-    #     post = Post.query.get_or_404(post_id)
-    #
-    #     if 'title' in request.json:
-    #         post.title = request.json['title']
-    #     if 'content' in request.json:
-    #         post.content = request.json['content']
-    #
-    #     db.session.commit()
-    #     return post_schema.dump(post)
 
-    def delete(self, post_id):
-        post = Post.query.get_or_404(post_id)
-        db.session.delete(post)
+class PatientDetailsResource(Resource):
+    def get(self, patient_id):
+        record = PatientDetails.query.get_or_404(patient_id)
+        return patient_schema.dump(record)
+
+    def delete(self, patient_id):
+        record = PatientDetails.query.get_or_404(patient_id)
+        db.session.delete(record)
         db.session.commit()
         return '', 204
 
 
-api.add_resource(PostResource, '/posts/<int:post_id>')
-api.add_resource(PostListResource, '/posts')
-# ...
+api.add_resource(PatientDetailsResource, '/patient_details/<int:patient_id>')
+api.add_resource(PatientDetailsListResource, '/patients_details')
+
+
+class User(db.Model):
+    patient_id = db.Column(db.Integer, primary_key=True)
+    first_name = db.Column(db.String(50))
+    last_name = db.Column(db.String(50))
+    email = db.Column(db.String(50))
+    password = db.Column(db.String(50))
+
+    def __repr__(self):
+        return '<User %s>' % self.first_name
+
+
+class UserSchema(ma.Schema):
+    class Meta:
+        fields = ('patient_id', 'first_name', 'last_name', 'email', 'password')
+        model = User
+
+
+user_schema = UserSchema()
+users_schema = UserSchema(many=True)
+
+
+class RegisterUser(Resource):
+    def get(self):
+        records = User.query.all()
+        return users_schema.dump(records)
+
+    def post(self):
+        new_post = User(
+            # patient_id=request.json['patient_id'],
+            first_name=request.json['first_name'],
+            last_name=request.json['last_name'],
+            email=request.json['email'],
+            password=request.json['password'])
+        data = User.query.filter_by(email=new_post.email).first()
+        if data is not None:
+            abort(
+                409,
+                "Username already exists"
+            )
+        else:
+            db.session.add(new_post)
+            db.session.commit()
+            # record = User.query.all()
+            e = str(request.json['email'])
+            r = User.query.filter_by(email=e).first()
+            response = {'patient_id': r.patient_id,
+                        'first_name': r.first_name, 'last_name': r.last_name, 'email': r.email}
+            ResponseSchema = Schema.from_dict(
+                {"patient_id": fields.Int(), "first_name": fields.Str(), "last_name": fields.Str(),
+                 "email": fields.Str()})
+            schema = ResponseSchema()
+            return schema.dump(response), 201
+
+
+class LoginUser(Resource):
+    def post(self):
+        new_post = User(
+            email=request.json['email'],
+            password=request.json['password'])
+        data = User.query.filter_by(email=new_post.email, password=new_post.password).first()
+        if data is not None:
+            basic_info = {'patient_id': data.patient_id, 'first_name': data.first_name,
+                          'last_name': data.last_name, 'email': data.email}
+            p = PatientDetails.query.filter_by(patient_id=data.patient_id).first()
+            if p is not None:
+                patient_details = patient_schema.dump(p)
+                recommendation = recommend_schema.dump(Recommendation.query.filter_by(patient_id=data.patient_id).first())
+                # patient_details['comorbidities'] = patient_details['comorbidities'].split(',')
+            else:
+                patient_details = ''
+                recommendation = ''
+            response = {'basic_info': basic_info, 'patient_details': patient_details,
+                        'recommendation': recommendation}
+            return response, 201
+
+        else:
+            abort(
+                403,
+                "Invalid username or password"
+            )
+
+
+api.add_resource(RegisterUser, '/register')
+api.add_resource(LoginUser, '/login')
+db.create_all()
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(threaded=True, port=5000)
